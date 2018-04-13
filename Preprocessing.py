@@ -10,10 +10,9 @@ import numpy as np
 from WordFrequency2 import WordFrequencyDist_D
 
 
-def preprocessing(pathData):
+def preprocessing(filename):
     
     # load data
-    filename = pathData+'/sentences.train'
     text_file_object = open(filename,'r')
     raw_scentences = text_file_object.readlines()
     text_file_object.close()

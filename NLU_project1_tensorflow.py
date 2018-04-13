@@ -5,12 +5,11 @@ NLU project 1
 import tensorflow as tf
 import numpy as np
 from load_embeddings import load_embedding
-
-#from Preprocessing import Preprocessing_main
+from Preprocessing import preprocessing
 
 class RNN_class(object):
     """ built the RNN """
-    def __init__(self, rnn_settings):
+    def __init__(self, rnn_settings, training_mode):
         self.sentence_length = rnn_settings['sentence_length']    # every word corresponds to a time step
         self.batch_size = rnn_settings['batch_size']
         self.embedding_size = rnn_settings['embedding_size']
@@ -20,6 +19,7 @@ class RNN_class(object):
         self.epoch_size = rnn_settings['epoch_size']
         self.clip_gradient = rnn_settings['clip_gradient']
         self.num_batches = int(self.vocabulary_size/self.batch_size)
+        self.training_mode = training_mode 
         
         # initialize the placeholders
         self.input_x = tf.placeholder(shape=[None, self.sentence_length], dtype=tf.int32) # [batch_size, sentence_length]
@@ -32,7 +32,7 @@ class RNN_class(object):
             
         with tf.variable_scope('rnn_cell'):
             # Initial state of the LSTM memory.
-            lstm = tf.contrib.rnn.LSTMCell(self.lstm_size, forget_bias=0.0, state_is_tuple=True)
+            lstm = tf.contrib.rnn.LSTMCell(self.lstm_size, forget_bias=0.0, state_is_tuple=True, reuse=not training_mode)
         
         with tf.variable_scope('rnn_operations'):
             # rnn operation
@@ -75,31 +75,33 @@ class RNN_class(object):
             self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits = logits, labels = self.input_y)
             self.loss =  tf.reduce_sum(self.loss, 1)
         
-        with tf.variable_scope('predictions'):
-            self.predictions = tf.argmax(logits,2)  # [batch_size, sentence_length]
-            self.predictions = tf.cast(self.predictions, tf.int64)
-            correct = tf.equal(self.predictions, self.input_y)
+        if training_mode:
         
-        with tf.variable_scope('accuracy'):
-            self.accuracy = tf.reduce_mean(tf.cast(correct, "float"), name="accuracy")
-        
-        with tf.variable_scope('training_operations'):
-            tvars = tf.trainable_variables()
-            grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, tvars), self.clip_gradient)
-            optimizer = tf.train.AdamOptimizer(learning_rate = self.learning_rate)
-            self.train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=tf.train.get_or_create_global_step())
+            with tf.variable_scope('predictions'):
+                self.predictions = tf.argmax(logits,2)  # [batch_size, sentence_length]
+                self.predictions = tf.cast(self.predictions, tf.int64)
+                correct = tf.equal(self.predictions, self.input_y)
             
-        print('output', self.output.get_shape(), self.output.dtype)
-        print('x size', self.input_x.get_shape(), self.input_x.dtype)
-        print('y size', self.input_y.get_shape(), self.input_y.dtype)
-        print('logit', logits.get_shape(), logits.dtype)
-        print('loss size', self.loss.get_shape(), self.loss.dtype)
-        print('pred size', self.predictions.get_shape(), self.predictions.dtype)
-        #print (tf.trainable_variables())
-        
-        self.perplexity = self.calculate_perplexity(logits = logits, 
-                                                    sentence_length = self.sentence_length,
-                                                    batch_size = self.batch_size)
+            with tf.variable_scope('accuracy'):
+                self.accuracy = tf.reduce_mean(tf.cast(correct, "float"), name="accuracy")
+            
+            with tf.variable_scope('training_operations'):
+                tvars = tf.trainable_variables()
+                grads, _ = tf.clip_by_global_norm(tf.gradients(self.loss, tvars), self.clip_gradient)
+                optimizer = tf.train.AdamOptimizer(learning_rate = self.learning_rate)
+                self.train_op = optimizer.apply_gradients(zip(grads, tvars), global_step=tf.train.get_or_create_global_step())
+                
+            print('output', self.output.get_shape(), self.output.dtype)
+            print('x size', self.input_x.get_shape(), self.input_x.dtype)
+            print('y size', self.input_y.get_shape(), self.input_y.dtype)
+            print('logit', logits.get_shape(), logits.dtype)
+            print('loss size', self.loss.get_shape(), self.loss.dtype)
+            print('pred size', self.predictions.get_shape(), self.predictions.dtype)
+            #print (tf.trainable_variables())
+            
+            self.perplexity = self.calculate_perplexity(logits = logits, 
+                                                        sentence_length = self.sentence_length,
+                                                        batch_size = self.batch_size)
     
 #    def calculate_perplexity(self, y_true, y_pred):
 #        
@@ -153,7 +155,7 @@ class RNN_class(object):
                 print('Training: batch: ', batch_i , 'loss: ', np.sum(loss), 'accuracy: ', acc, 'perplexity: ', np.sum(perplexity))
                
 
-def main_train(data_X, data_Y, word_dict):
+def main_train(train_X, train_Y, eval_X, eval_Y, word_dict):            
     # reset the built graph
     tf.reset_default_graph()
         
@@ -163,12 +165,13 @@ def main_train(data_X, data_Y, word_dict):
         'embedding_size' : 100, #given
         'lstm_size' : 512,
         'vocabulary_size' : 20000,
-        'learning_rate' : 0.1, # default
-        'epoch_size' : 50,
+        'learning_rate' : 0.001, # default
+        'epoch_size' : 1,
         'clip_gradient' : 5.0
         }
     
-    rnn_graph = RNN_class(rnn_settings)
+    rnn_train = RNN_class(rnn_settings, training_mode = True)
+    rnn_valid = RNN_class(rnn_settings, training_mode = False)
 
     # Launch the graph
     with tf.Session() as session:
@@ -176,8 +179,7 @@ def main_train(data_X, data_Y, word_dict):
         session.run(tf.global_variables_initializer())
         
         
-        
-        task_B = False
+        task_B = True
         if task_B:   
             embedding_matrix= tf.get_variable(name="embedding", initializer = tf.random_uniform([20000, 100], -0.1, 0.1))
             load_embedding(session = session, 
@@ -187,11 +189,12 @@ def main_train(data_X, data_Y, word_dict):
                            dim_embedding = 100, 
                            vocab_size = 20000)
         
-        
-  
+
         # train the model
-        rnn_graph.train_rnn(rnn_graph, session, data_X, data_Y)
+        rnn_train.train_rnn(rnn_train, session, train_X, train_Y)
         
+        # validate the model
+        rnn_valid.test_rnn(rnn_valid, session, eval_X, eval_Y)
         # evaluate the model
         #model.train(model, session, )
 
@@ -199,14 +202,13 @@ def main_train(data_X, data_Y, word_dict):
         
             
 # run the main method
-
-from Preprocessing import preprocessing
-
-# def load_embedding(session, vocab, emb, path, dim_embedding, vocab_size):
-
-
 pathData = r'C:\Users\mauro\Desktop\CAS\_Natural Language Understanding\Project\data'
-#data_X, data_Y, word_dict = preprocessing(pathData)      
-main_train(data_X, data_Y, word_dict)            
+train_file = pathData + '\sentences.train'
+test_file = pathData + '\sentences.eval'
+
+train_X, train_Y, word_dict = preprocessing(train_file)      
+#eval_X, eval_Y, word_dict = preprocessing(test_file)      
+
+main_train(train_X, train_Y, eval_X, eval_Y, word_dict)            
 
 
