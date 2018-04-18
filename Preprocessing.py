@@ -6,7 +6,7 @@ Created on Tue Apr 03 08:08:48 2018
 """
 
 import numpy as np
-from WordFrequency2_m5 import WordFrequencyDist_D
+from WordFrequency2 import WordFrequencyDist_D
 
 
 def preprocessing(pathToFile, training_mode, words_to_idx, word_dict):
@@ -66,11 +66,10 @@ def preprocessing(pathToFile, training_mode, words_to_idx, word_dict):
         print('preprocessing for training data')
         # build up the dictionary
         word_dict = build_vocabulary(raw_scentences)   
-        
         new_scentences, words_final = Tokenize(raw_scentences, word_dict)
-        
         word_dist_final = WordFrequencyDist_D(words_final)
         words_to_idx = {word_dist_final[indx][0]: indx for indx in range(0, 20000)}
+        
         ## Create the training data
         X = [[words_to_idx[w] for w in sent[:-1]] for sent in new_scentences]
         y = [[words_to_idx[w] for w in sent[1:]] for sent in new_scentences]
